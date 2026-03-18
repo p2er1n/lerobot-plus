@@ -96,6 +96,7 @@ from lerobot.teleoperators import (  # noqa: F401
     omx_leader,
     openarm_leader,
     openarm_mini,
+    pika,
     reachy2_teleoperator,
     so_leader,
     unitree_g1,
