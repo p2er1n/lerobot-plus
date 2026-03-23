@@ -115,6 +115,7 @@ robstride = ["lerobot[can-dep]"]
 
 # Robots
 openarms = ["lerobot[damiao]"]
+piper = ["piper-sdk>=0.6.0,<1.0.0", "lerobot[can-dep]"]
 gamepad = ["lerobot[pygame-dep]", "hidapi>=0.14.0,<0.15.0"]
 hopejr = ["lerobot[feetech]", "lerobot[pygame-dep]"]
 lekiwi = ["lerobot[feetech]", "pyzmq>=26.2.1,<28.0.0"]
@@ -207,6 +208,7 @@ all = [
     "lerobot[metaworld]",
     "lerobot[sarm]",
     "lerobot[peft]",
+    "lerobot[piper]",
     # "lerobot[unitree_g1]", TODO: Unitree requires specific installation instructions for unitree_sdk2
 ]
 
