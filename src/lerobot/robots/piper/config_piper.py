@@ -57,3 +57,6 @@ class PiperConfig(RobotConfig):
 
     # Timeout in seconds to wait for SDK EnablePiper during connect
     enable_timeout: float = 5.0
+
+    # Motion control speed percentage (0-100), default 100%
+    motion_speed: int = 100

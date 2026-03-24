@@ -80,6 +80,7 @@ class Piper(Robot):
             self._iface = PiperSDKInterface(
                 port=self.config.can_interface,
                 enable_timeout=self.config.enable_timeout,
+                speed=self.config.motion_speed,
             )
         for cam in self.cameras.values():
             cam.connect()

@@ -32,7 +32,7 @@ except Exception:
 class PiperSDKInterface:
     """Interface to Piper SDK for robot control."""
 
-    def __init__(self, port: str = "can0", enable_timeout: float = 5.0):
+    def __init__(self, port: str = "can0", enable_timeout: float = 5.0, speed: int = 100):
         if C_PiperInterface_V2 is None:
             raise ImportError("piper_sdk is not installed. Install with `pip install piper_sdk`.")
 
@@ -57,9 +57,9 @@ class PiperSDKInterface:
                 raise TimeoutError(f"EnablePiper timed out after {enable_timeout} seconds")
             time.sleep(0.01)
 
-        # Set motion control to joint mode at 100% speed
+        # Set motion control to joint mode at specified speed (default 100%)
         try:
-            self.piper.MotionCtrl_2(0x01, 0x01, 100, 0x00)
+            self.piper.MotionCtrl_2(0x01, 0x01, speed, 0x00)
         except Exception as e:
             log.warning("MotionCtrl_2 failed: %s", e)
 
