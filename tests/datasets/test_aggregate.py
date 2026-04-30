@@ -16,7 +16,11 @@
 
 from unittest.mock import patch
 
-import datasets
+import pytest
+
+pytest.importorskip("datasets", reason="datasets is required (install lerobot[dataset])")
+
+import datasets  # noqa: E402
 import torch
 
 from lerobot.datasets.aggregate import aggregate_datasets
@@ -109,7 +113,7 @@ def assert_metadata_consistency(aggr_ds, ds_0, ds_1):
     """Test that metadata is correctly aggregated."""
     # Test basic info
     assert aggr_ds.fps == ds_0.fps == ds_1.fps, "FPS should be the same across all datasets"
-    assert aggr_ds.meta.info["robot_type"] == ds_0.meta.info["robot_type"] == ds_1.meta.info["robot_type"], (
+    assert aggr_ds.meta.info.robot_type == ds_0.meta.info.robot_type == ds_1.meta.info.robot_type, (
         "Robot type should be the same"
     )
 
@@ -149,8 +153,8 @@ def assert_video_frames_integrity(aggr_ds, ds_0, ds_1):
 
     video_keys = list(
         filter(
-            lambda key: aggr_ds.meta.info["features"][key]["dtype"] == "video",
-            aggr_ds.meta.info["features"].keys(),
+            lambda key: aggr_ds.meta.info.features[key]["dtype"] == "video",
+            aggr_ds.meta.info.features.keys(),
         )
     )
 
@@ -260,8 +264,8 @@ def test_aggregate_datasets(tmp_path, lerobot_dataset_factory):
 
     # Mock the revision to prevent Hub calls during dataset loading
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "test_aggr")
@@ -311,8 +315,8 @@ def test_aggregate_with_low_threshold(tmp_path, lerobot_dataset_factory):
 
     # Mock the revision to prevent Hub calls during dataset loading
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "small_aggr")
@@ -367,8 +371,8 @@ def test_video_timestamps_regression(tmp_path, lerobot_dataset_factory):
     )
 
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "regression_aggr")
@@ -492,8 +496,8 @@ def test_aggregate_image_datasets(tmp_path, lerobot_dataset_factory):
 
     # Load the aggregated dataset
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "image_aggr")
@@ -562,8 +566,8 @@ def test_aggregate_already_merged_dataset(tmp_path, lerobot_dataset_factory):
     )
 
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "ds_ab")
@@ -590,8 +594,8 @@ def test_aggregate_already_merged_dataset(tmp_path, lerobot_dataset_factory):
     )
 
     with (
-        patch("lerobot.datasets.lerobot_dataset.get_safe_version") as mock_get_safe_version,
-        patch("lerobot.datasets.lerobot_dataset.snapshot_download") as mock_snapshot_download,
+        patch("lerobot.datasets.dataset_metadata.get_safe_version") as mock_get_safe_version,
+        patch("lerobot.datasets.dataset_metadata.snapshot_download") as mock_snapshot_download,
     ):
         mock_get_safe_version.return_value = "v3.0"
         mock_snapshot_download.return_value = str(tmp_path / "ds_abc")
