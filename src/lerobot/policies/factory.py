@@ -48,6 +48,7 @@ from .act.configuration_act import ACTConfig
 from .diffusion.configuration_diffusion import DiffusionConfig
 from .groot.configuration_groot import GrootConfig
 from .multi_task_dit.configuration_multi_task_dit import MultiTaskDiTConfig
+from .openvla.configuration_openvla import OpenVLAConfig
 from .pi0.configuration_pi0 import PI0Config
 from .pi05.configuration_pi05 import PI05Config
 from .pretrained import PreTrainedPolicy
@@ -114,6 +115,10 @@ def get_policy_class(name: str) -> type[PreTrainedPolicy]:
         from .vqbet.modeling_vqbet import VQBeTPolicy
 
         return VQBeTPolicy
+    elif name == "openvla":
+        from .openvla.modeling_openvla import OpenVLAPolicy
+
+        return OpenVLAPolicy
     elif name == "pi0":
         from .pi0.modeling_pi0 import PI0Policy
 
@@ -182,6 +187,8 @@ def make_policy_config(policy_type: str, **kwargs) -> PreTrainedConfig:
         return MultiTaskDiTConfig(**kwargs)
     elif policy_type == "vqbet":
         return VQBeTConfig(**kwargs)
+    elif policy_type == "openvla":
+        return OpenVLAConfig(**kwargs)
     elif policy_type == "pi0":
         return PI0Config(**kwargs)
     elif policy_type == "pi05":
@@ -338,6 +345,14 @@ def make_pre_post_processors(
         from .vqbet.processor_vqbet import make_vqbet_pre_post_processors
 
         processors = make_vqbet_pre_post_processors(
+            config=policy_cfg,
+            dataset_stats=kwargs.get("dataset_stats"),
+        )
+
+    elif isinstance(policy_cfg, OpenVLAConfig):
+        from .openvla.processor_openvla import make_openvla_pre_post_processors
+
+        processors = make_openvla_pre_post_processors(
             config=policy_cfg,
             dataset_stats=kwargs.get("dataset_stats"),
         )

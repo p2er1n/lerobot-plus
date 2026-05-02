@@ -19,6 +19,7 @@ from .diffusion.configuration_diffusion import DiffusionConfig as DiffusionConfi
 from .factory import get_policy_class, make_policy, make_policy_config, make_pre_post_processors
 from .groot.configuration_groot import GrootConfig as GrootConfig
 from .multi_task_dit.configuration_multi_task_dit import MultiTaskDiTConfig as MultiTaskDiTConfig
+from .openvla.configuration_openvla import OpenVLAConfig as OpenVLAConfig
 from .pi0.configuration_pi0 import PI0Config as PI0Config
 from .pi0_fast.configuration_pi0_fast import PI0FastConfig as PI0FastConfig
 from .pi05.configuration_pi05 import PI05Config as PI05Config
@@ -41,6 +42,7 @@ __all__ = [
     "DiffusionConfig",
     "GrootConfig",
     "MultiTaskDiTConfig",
+    "OpenVLAConfig",
     "PI0Config",
     "PI0FastConfig",
     "PI05Config",

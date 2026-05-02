@@ -1,0 +1,3 @@
+[submodule "src/lerobot/policies/openvla/upstream_openvla"]
+	path = src/lerobot/policies/openvla/upstream_openvla
+	url = https://github.com/p2er1n/openvla.git
