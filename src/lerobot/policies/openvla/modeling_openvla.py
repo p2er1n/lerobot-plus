@@ -660,6 +660,7 @@ class OpenVLAPolicy(PreTrainedPolicy):
         return (bins[:-1] + bins[1:]) / 2.0
 
     def get_optim_params(self) -> dict:
+        self._ensure_backend_loaded()
         return self.parameters()
 
     def reset(self):
@@ -978,7 +979,78 @@ class OpenVLAPolicy(PreTrainedPolicy):
         return action_tensor
 
     def forward(self, batch: dict[str, Tensor], *args, **kwargs) -> tuple[Tensor, dict | None]:
-        raise NotImplementedError("OpenVLA training is not implemented yet for the LeRobot adapter.")
+        self._ensure_backend_loaded()
+        assert self.model is not None
+        assert self.processor is not None
+
+        # --- 1. Extract inputs from batch ---
+        instructions = self._extract_instruction(batch)
+        images = self._extract_images(batch)  # list of PIL images
+        actions = batch["action"].to(device=self._target_device(), dtype=torch.float32)
+
+        # Broadcast single instruction to all images
+        if len(instructions) == 1 and len(images) > 1:
+            instructions = instructions * len(images)
+
+        # --- 2. Process images through PrismaticImageProcessor ---
+        pixel_values = self.processor.image_processor(images, return_tensors="pt")["pixel_values"]
+        model_dtype = next(self.model.parameters()).dtype
+        pixel_values = pixel_values.to(device=self._target_device(), dtype=model_dtype)
+
+        # --- 3. Build prompts and tokenize ---
+        prompts = [self._format_prompt(inst) for inst in instructions]
+        tokenizer = self.processor.tokenizer
+        prompt_inputs = tokenizer(prompts, return_tensors="pt", padding=True, truncation=True)
+        prompt_ids = prompt_inputs.input_ids.to(self._target_device())
+
+        # Append the special empty-action prompt token (29871)
+        separator = torch.full(
+            (prompt_ids.shape[0], 1), _EMPTY_ACTION_PROMPT_TOKEN_ID,
+            dtype=prompt_ids.dtype, device=self._target_device(),
+        )
+        prompt_ids = torch.cat([prompt_ids, separator], dim=1)
+
+        # --- 4. Normalize actions to [-1, 1] using q01/q99 ---
+        action_stats = self.model.get_action_stats(self.config.unnorm_key)
+        q01 = torch.tensor(action_stats["q01"], device=actions.device, dtype=actions.dtype)
+        q99 = torch.tensor(action_stats["q99"], device=actions.device, dtype=actions.dtype)
+        mask = torch.tensor(
+            action_stats.get("mask", [True] * actions.shape[-1]),
+            device=actions.device, dtype=torch.bool,
+        )
+        denom = q99 - q01
+        denom = torch.where(denom.abs() < 1e-8, torch.ones_like(denom), denom)
+        normalized = 2.0 * (actions - q01) / denom - 1.0
+        normalized = torch.where(mask, normalized, actions)
+        normalized = torch.clamp(normalized, -1.0, 1.0)
+
+        # --- 5. Discretize actions into token IDs ---
+        n_bins = self.config.n_action_bins
+        vocab_size = self.model.vocab_size
+        discretized = torch.round((normalized + 1.0) / 2.0 * (n_bins - 1)).long()
+        discretized = torch.clamp(discretized, 0, n_bins - 2)  # n_bins-2 = 254
+        action_token_ids = vocab_size - discretized - 1
+
+        # --- 6. Build full input_ids and labels ---
+        input_ids = torch.cat([prompt_ids, action_token_ids], dim=1)
+
+        # Labels: IGNORE for prompt, action tokens for the action portion
+        labels = torch.full_like(input_ids, IGNORE_INDEX)
+        labels[:, prompt_ids.shape[1]:] = action_token_ids
+
+        attention_mask = torch.ones_like(input_ids)
+
+        # --- 7. Forward through model ---
+        outputs = self.model(
+            input_ids=input_ids,
+            pixel_values=pixel_values,
+            attention_mask=attention_mask,
+            labels=labels,
+            return_dict=True,
+        )
+
+        loss = outputs.loss
+        return loss, {"loss": loss.item()}
 
     @torch.no_grad()
     def predict_action_chunk(self, batch: dict[str, Tensor], **kwargs: ActionSelectKwargs) -> Tensor:

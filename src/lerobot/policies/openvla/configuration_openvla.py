@@ -85,7 +85,7 @@ class OpenVLAConfig(PreTrainedConfig):
         default_factory=lambda: {
             "VISUAL": NormalizationMode.IDENTITY,
             "STATE": NormalizationMode.MEAN_STD,
-            "ACTION": NormalizationMode.MEAN_STD,
+            "ACTION": NormalizationMode.IDENTITY,
         }
     )
 
