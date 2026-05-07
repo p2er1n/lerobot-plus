@@ -217,32 +217,6 @@ class PrismaticProcessor(ProcessorMixin):
         return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
 
 
-@ProcessorStepRegistry.register(name="openvla_gripper_post_processor")
-class OpenVLAGripperPostProcessorStep(ActionProcessorStep):
-    """Post-processes the OpenVLA gripper action to match the environment convention.
-
-    The OpenVLA training dataloader flips the gripper sign to align with other datasets
-    (0 = close, 1 = open). At inference time we need to:
-
-    1. Normalize gripper from [0, 1] to [-1, +1] and binarize to ±1.
-    2. Invert the gripper sign so that -1 = open, +1 = close (LIBERO convention).
-    """
-
-    def action(self, action: PolicyAction) -> PolicyAction:
-        action = action.clone()
-        # [0, 1] -> [-1, +1], then binarize
-        action[..., -1] = 2.0 * action[..., -1] - 1.0
-        action[..., -1] = torch.sign(action[..., -1])
-        # Invert sign: training convention (0=close, 1=open) -> env convention (-1=open, +1=close)
-        action[..., -1] = -action[..., -1]
-        return action
-
-    def transform_features(
-        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]]
-    ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
-        return features
-
-
 def make_openvla_pre_post_processors(
     config: OpenVLAConfig,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
@@ -274,7 +248,6 @@ def make_openvla_pre_post_processors(
             norm_map=config.normalization_mapping,
             stats=dataset_stats,
         ),
-        OpenVLAGripperPostProcessorStep(),
         DeviceProcessorStep(device="cpu"),
     ]
 

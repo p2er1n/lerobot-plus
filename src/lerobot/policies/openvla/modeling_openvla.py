@@ -653,6 +653,9 @@ class OpenVLAPolicy(PreTrainedPolicy):
         self._input_dtype = torch.float32
         self._bin_centers = self._compute_bin_centers(config.n_action_bins)
         self.reset()
+        # Load the backend model eagerly so that PEFT adapter loading (via PeftModel.from_pretrained)
+        # can find target modules for LoRA injection.
+        self._ensure_backend_loaded()
 
     @staticmethod
     def _compute_bin_centers(n_action_bins: int) -> np.ndarray:
@@ -660,8 +663,20 @@ class OpenVLAPolicy(PreTrainedPolicy):
         return (bins[:-1] + bins[1:]) / 2.0
 
     def get_optim_params(self) -> dict:
-        self._ensure_backend_loaded()
         return self.parameters()
+
+    def _validate_peft_config(self, peft_config) -> None:
+        """Allow PEFT even when pretrained_path is None, since OpenVLA loads
+        base weights from model_id rather than a lerobot checkpoint path."""
+        if not self.config.pretrained_path and not self.config.model_id:
+            raise ValueError(
+                "PEFT requires either pretrained_path or model_id to be set "
+                "so that base model weights are available for fine-tuning."
+            )
+
+    def wrap_with_peft(self, peft_config=None, peft_cli_overrides=None):
+        """Override to ensure the model is loaded before PEFT wraps it."""
+        return super().wrap_with_peft(peft_config=peft_config, peft_cli_overrides=peft_cli_overrides)
 
     def reset(self):
         self._last_instruction: str | list[str] | None = None
@@ -951,14 +966,28 @@ class OpenVLAPolicy(PreTrainedPolicy):
 
     def _run_openvla_inference(self, inputs: Any, unnorm_key: str | None) -> np.ndarray | Tensor | Sequence[float]:
         assert self.model is not None
+        # PEFT wraps the base model; look through it for predict_action.
+        peft_model = None
+        if not hasattr(self.model, "predict_action"):
+            try:
+                from peft import PeftModel
+                if isinstance(self.model, PeftModel):
+                    peft_model = self.model
+                    self.model = self.model.get_base_model()
+            except ImportError:
+                pass
         if hasattr(self.model, "predict_action"):
-            return self.model.predict_action(**inputs, unnorm_key=unnorm_key, do_sample=False)
+            result = self.model.predict_action(**inputs, unnorm_key=unnorm_key, do_sample=False)
+            if peft_model is not None:
+                self.model = peft_model
+            return result
+        if peft_model is not None:
+            self.model = peft_model
         if not isinstance(inputs, Mapping):
             raise TypeError("OpenVLA generate fallback expects processor outputs to be a mapping when the backend lacks predict_action().")
         return self._predict_action_from_generate(inputs, unnorm_key=unnorm_key)
 
     def _predict_openvla_action(self, batch: dict[str, Tensor | Any]) -> Tensor:
-        self._ensure_backend_loaded()
         assert self.model is not None
         instructions = self._extract_instruction(batch)
         images = self._extract_images(batch)
@@ -979,7 +1008,6 @@ class OpenVLAPolicy(PreTrainedPolicy):
         return action_tensor
 
     def forward(self, batch: dict[str, Tensor], *args, **kwargs) -> tuple[Tensor, dict | None]:
-        self._ensure_backend_loaded()
         assert self.model is not None
         assert self.processor is not None
 
@@ -987,6 +1015,7 @@ class OpenVLAPolicy(PreTrainedPolicy):
         instructions = self._extract_instruction(batch)
         images = self._extract_images(batch)  # list of PIL images
         actions = batch["action"].to(device=self._target_device(), dtype=torch.float32)
+        actions = actions.view(actions.shape[0], -1)  # ensure [B, action_dim]
 
         # Broadcast single instruction to all images
         if len(instructions) == 1 and len(images) > 1:
