@@ -347,6 +347,7 @@ class PrismaticForConditionalGeneration(PrismaticPreTrainedModel, GenerationMixi
         output_hidden_states: bool | None = None,
         output_projector_features: bool | None = None,
         return_dict: bool | None = None,
+        **kwargs: Any,
     ) -> tuple | PrismaticCausalLMOutputWithPast:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
@@ -471,11 +472,19 @@ class PrismaticForConditionalGeneration(PrismaticPreTrainedModel, GenerationMixi
         model_inputs.update(
             {
                 "attention_mask": attention_mask,
-                "pixel_values": pixel_values,
                 "past_key_values": past_key_values,
                 "use_cache": kwargs.get("use_cache"),
             }
         )
+        # Pass pixel_values only on the first generation step (prefill).
+        # In subsequent decoding steps, image features are already cached in past_key_values.
+        # Note: in transformers>=5.x, generate() initializes an empty DynamicCache before the first
+        # forward call, so we must check is_initialized rather than relying on past_key_values is None.
+        is_first = past_key_values is None
+        if hasattr(past_key_values, "is_initialized"):
+            is_first = is_first or not past_key_values.is_initialized
+        if is_first and pixel_values is not None:
+            model_inputs["pixel_values"] = pixel_values
         return model_inputs
 
     def _reorder_cache(self, *args, **kwargs) -> Any:
@@ -519,10 +528,11 @@ class OpenVLAForActionPrediction(PrismaticForConditionalGeneration):
     ) -> np.ndarray:
         """Predict a single action from tokenized input.
 
-        Uses manual autoregressive decoding instead of ``self.generate()`` to work
-        correctly with newer HuggingFace transformers (>=5.x) where the KV-cache
-        prefill path in ``generate()`` may bypass the multimodal forward branch,
-        causing the vision backbone output to be silently dropped.
+        Uses manual autoregressive decoding instead of ``self.generate()``.
+        HF transformers >=5.x changes the prefill mechanism (initializes an
+        empty cache before the first forward call, and validates kwargs via
+        ``_validate_model_kwargs``), making it unreliable for custom vision-
+        language models unless fully registered with the transformers library.
         """
         if input_ids is None:
             raise ValueError("predict_action requires input_ids.")
@@ -771,6 +781,18 @@ class OpenVLAPolicy(PreTrainedPolicy):
         return model
 
     def _load_openvla_backend(self) -> None:
+        # Resolve relative model_id against the config file directory.
+        model_id = Path(self.config.model_id)
+        if not model_id.is_absolute():
+            # self.config.pretrained_path points to the lerobot config directory (or checkpoint).
+            cfg_dir = (
+                Path(self.config.pretrained_path).resolve()
+                if self.config.pretrained_path
+                else Path.cwd()
+            )
+            self.config.model_id = str((cfg_dir / model_id).resolve())
+            logger.info("Resolved relative model_id=%s to %s", model_id, self.config.model_id)
+
         device = self._target_device()
         device_type = device.type
         model_dtype_name = self.config.torch_dtype if device_type == "cpu" else self.config.gpu_torch_dtype
@@ -966,23 +988,11 @@ class OpenVLAPolicy(PreTrainedPolicy):
 
     def _run_openvla_inference(self, inputs: Any, unnorm_key: str | None) -> np.ndarray | Tensor | Sequence[float]:
         assert self.model is not None
-        # PEFT wraps the base model; look through it for predict_action.
-        peft_model = None
-        if not hasattr(self.model, "predict_action"):
-            try:
-                from peft import PeftModel
-                if isinstance(self.model, PeftModel):
-                    peft_model = self.model
-                    self.model = self.model.get_base_model()
-            except ImportError:
-                pass
+        # self.model is OpenVLAForActionPrediction (PEFT wraps the outer OpenVLAPolicy, not this inner model).
+        # Its predict_action() now delegates to self.generate() which correctly handles
+        # multimodal prefill + cached decoding via prepare_inputs_for_generation().
         if hasattr(self.model, "predict_action"):
-            result = self.model.predict_action(**inputs, unnorm_key=unnorm_key, do_sample=False)
-            if peft_model is not None:
-                self.model = peft_model
-            return result
-        if peft_model is not None:
-            self.model = peft_model
+            return self.model.predict_action(**inputs, unnorm_key=unnorm_key, do_sample=False)
         if not isinstance(inputs, Mapping):
             raise TypeError("OpenVLA generate fallback expects processor outputs to be a mapping when the backend lacks predict_action().")
         return self._predict_action_from_generate(inputs, unnorm_key=unnorm_key)
