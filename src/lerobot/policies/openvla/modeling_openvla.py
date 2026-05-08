@@ -672,6 +672,27 @@ class OpenVLAPolicy(PreTrainedPolicy):
         bins = np.linspace(-1, 1, n_action_bins)
         return (bins[:-1] + bins[1:]) / 2.0
 
+    @classmethod
+    def from_pretrained(cls, pretrained_name_or_path, *args, **kwargs):
+        """Load an OpenVLA policy without expecting a single model.safetensors file.
+
+        The base ``PreTrainedPolicy.from_pretrained`` tries to load weights from a
+        single ``model.safetensors`` file in the config directory.  OpenVLA stores its
+        weights inside a HuggingFace transformers subdirectory (or as sharded files),
+        loaded by ``_load_openvla_backend()`` during ``__init__``, so we skip the
+        safetensors loading step entirely.
+        """
+        from lerobot.configs import PreTrainedConfig
+
+        config = kwargs.pop("config", None)
+        if config is None:
+            config = cls.config_class.from_pretrained(pretrained_name_or_path)
+        config.pretrained_path = pretrained_name_or_path
+        policy = cls(config, *args, **kwargs)
+        policy.to(config.device)
+        policy.eval()
+        return policy
+
     def get_optim_params(self) -> dict:
         return self.parameters()
 

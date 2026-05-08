@@ -217,6 +217,25 @@ class PrismaticProcessor(ProcessorMixin):
         return list(dict.fromkeys(tokenizer_input_names + image_processor_input_names))
 
 
+@ProcessorStepRegistry.register(name="openvla_gripper_post_processor")
+class OpenVLAGripperPostProcessorStep(ActionProcessorStep):
+    """Invert the gripper action to match the LIBERO environment convention.
+
+    The OpenVLA model outputs gripper in [-1, +1] where +1 = open, -1 = close.
+    LIBERO uses the opposite convention: -1 = open, +1 = close.
+    """
+
+    def action(self, action: PolicyAction) -> PolicyAction:
+        action = action.clone()
+        action[..., -1] = -action[..., -1]
+        return action
+
+    def transform_features(
+        self, features: dict[PipelineFeatureType, dict[str, PolicyFeature]]
+    ) -> dict[PipelineFeatureType, dict[str, PolicyFeature]]:
+        return features
+
+
 def make_openvla_pre_post_processors(
     config: OpenVLAConfig,
     dataset_stats: dict[str, dict[str, torch.Tensor]] | None = None,
@@ -248,6 +267,7 @@ def make_openvla_pre_post_processors(
             norm_map=config.normalization_mapping,
             stats=dataset_stats,
         ),
+        OpenVLAGripperPostProcessorStep(),
         DeviceProcessorStep(device="cpu"),
     ]
 
