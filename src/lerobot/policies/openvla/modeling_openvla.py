@@ -920,7 +920,14 @@ class OpenVLAPolicy(PreTrainedPolicy):
             image = image.permute(1, 2, 0)
         elif image.shape[-1] not in {1, 3}:
             raise ValueError(f"Unsupported image tensor shape for OpenVLA adapter: {tuple(image.shape)}")
-        image = image.clamp(0, 1).mul(255).round().to(torch.uint8) if image.is_floating_point() else image.to(torch.uint8)
+        if image.is_floating_point():
+            # Auto-detect value range: [0,255] (uint8-scaled) or [0,1] (normalized)
+            if image.max() > 1.0:
+                image = image.clamp(0, 255).round().to(torch.uint8)
+            else:
+                image = image.clamp(0, 1).mul(255).round().to(torch.uint8)
+        else:
+            image = image.to(torch.uint8)
         array = image.numpy()
         if array.shape[-1] == 1:
             array = np.repeat(array, 3, axis=-1)
