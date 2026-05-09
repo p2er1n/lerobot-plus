@@ -219,15 +219,17 @@ class PrismaticProcessor(ProcessorMixin):
 
 @ProcessorStepRegistry.register(name="openvla_gripper_post_processor")
 class OpenVLAGripperPostProcessorStep(ActionProcessorStep):
-    """Invert the gripper action to match the LIBERO environment convention.
+    """Match the official OpenVLA LIBERO gripper post-processing.
 
-    The OpenVLA model outputs gripper in [-1, +1] where +1 = open, -1 = close.
-    LIBERO uses the opposite convention: -1 = open, +1 = close.
+    Official OpenVLA first maps the model gripper output from [0, 1] to [-1, 1],
+    binarizes it with sign(), then inverts it for LIBERO's convention.
     """
 
     def action(self, action: PolicyAction) -> PolicyAction:
         action = action.clone()
-        action[..., -1] = -action[..., -1]
+        gripper_action = 2 * action[..., -1] - 1
+        gripper_action = torch.sign(gripper_action)
+        action[..., -1] = -gripper_action
         return action
 
     def transform_features(
